@@ -37,3 +37,6 @@ htmlcov/
 *.log
 *.sqlite3
 *.db
+
+# Local-only planning artifacts (PRD, task list) — never publish
+tasks/
