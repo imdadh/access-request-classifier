@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD?error}
+      POSTGRES_DB: ${POSTGRES_DB:-access_requests}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-access_requests}"]
+      interval: 5s
+      retries: 5
+
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD?error}@db:5432/${POSTGRES_DB:-access_requests}
+      ANOMALY_THRESHOLD: ${ANOMALY_THRESHOLD:-0.5}
+      LLM_API_KEY: ${LLM_API_KEY?error}
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
