@@ -1,6 +1,8 @@
 import logging
 
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
 from app.db.models import Base
 from app.db.seed import seed_database
@@ -30,6 +32,18 @@ app = FastAPI(
     description="AI-Powered Access Request Classification and Routing",
     version="0.1.0",
 )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request, exc):
+    """Return a clear JSON error response for malformed input."""
+    return JSONResponse(
+        status_code=422,
+        content={
+            "error": "Invalid request input",
+            "detail": exc.errors(),
+        },
+    )
 
 
 @app.on_event("startup")
