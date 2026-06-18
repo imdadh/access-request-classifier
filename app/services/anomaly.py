@@ -4,15 +4,10 @@ from typing import List, Tuple, Optional
 
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.db.models import RequestType, RequestStatus, AccessRequest
 
 logger = logging.getLogger(__name__)
-
-# Minimum number of prior accepted requests before we consider a requester "warm"
-MIN_HISTORY_FOR_WARM_START = 2
-
-# Default anomaly score for cold-start requesters
-COLD_START_ANOMALY_SCORE = 0.8
 
 
 def compute_anomaly_score(
@@ -30,7 +25,7 @@ def compute_anomaly_score(
     historical pattern. A higher score means the request is more anomalous.
 
     The implementation uses a simple heuristic:
-    - If the requester has fewer than `MIN_HISTORY_FOR_WARM_START` prior accepted
+    - If the requester has fewer than `cold_start_min_history` prior accepted
       requests, return a high anomaly score (cold-start).
     - Otherwise, compute the fraction of prior accepted requests that share the
       same request_type. A lower fraction yields a higher anomaly score.
@@ -78,18 +73,18 @@ def compute_anomaly_score(
     history_count = len(prior_accepted)
 
     # Cold-start: insufficient history
-    if history_count < MIN_HISTORY_FOR_WARM_START:
+    if history_count < settings.cold_start_min_history:
         logger.info(
             "Requester '%s' has only %d prior accepted request(s); applying cold-start anomaly score %.2f",
             requester_id,
             history_count,
-            COLD_START_ANOMALY_SCORE,
+            settings.cold_start_anomaly_score,
         )
         factors.append(
             f"Requester has only {history_count} prior accepted request(s); "
             "insufficient history to establish a baseline. Flagged as higher-anomaly."
         )
-        anomaly_score = COLD_START_ANOMALY_SCORE
+        anomaly_score = settings.cold_start_anomaly_score
     else:
         # Warm-start: compute deviation based on request_type
         same_type_count = sum(
