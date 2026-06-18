@@ -1,4 +1,5 @@
 import logging
+import json
 from typing import List, Tuple, Optional
 
 from sqlalchemy.orm import Session
@@ -20,6 +21,7 @@ def compute_anomaly_score(
     request_type: RequestType,
     resource: Optional[str] = None,
     role: Optional[str] = None,
+    request_id: Optional[int] = None,
 ) -> Tuple[float, List[str]]:
     """Compute a 0.0–1.0 anomaly score for the given request by comparing it to
     the requester's prior accepted requests (auto_approved or approved status).
@@ -46,6 +48,10 @@ def compute_anomaly_score(
         request_type: The classified request type of the current request.
         resource: Optional resource identifier (e.g., dashboard name, system name).
         role: Optional role name (reserved for future use).
+        request_id: Optional database ID of the current AccessRequest record to
+            update with the computed factors. If provided, the record's
+            `anomaly_factors` field will be set to a JSON-serialized list of
+            human-readable factor strings.
 
     Returns:
         A tuple of (anomaly_score, factors), where:
@@ -83,56 +89,69 @@ def compute_anomaly_score(
             f"Requester has only {history_count} prior accepted request(s); "
             "insufficient history to establish a baseline. Flagged as higher-anomaly."
         )
-        return COLD_START_ANOMALY_SCORE, factors
-
-    # Warm-start: compute deviation based on request_type
-    same_type_count = sum(1 for r in prior_accepted if r.classification == request_type)
-
-    # Fraction of prior requests that share the same type
-    same_type_fraction = same_type_count / history_count if history_count > 0 else 0.0
-
-    # The anomaly score is the complement of the fraction: if 80% of prior
-    # requests were of the same type, the anomaly score is 0.2.
-    type_anomaly = 1.0 - same_type_fraction
-
-    # Additional deviation if resource is provided (optional)
-    resource_anomaly = 0.0
-    if resource:
-        # For now, we check if any prior request's request_text contains the resource.
-        # This is a simple heuristic; future versions could store resource explicitly.
-        resource_lower = resource.lower()
-        same_resource_count = sum(
-            1 for r in prior_accepted if resource_lower in r.request_text.lower()
+        anomaly_score = COLD_START_ANOMALY_SCORE
+    else:
+        # Warm-start: compute deviation based on request_type
+        same_type_count = sum(
+            1 for r in prior_accepted if r.classification == request_type
         )
-        same_resource_fraction = (
-            same_resource_count / history_count if history_count > 0 else 0.0
-        )
-        resource_anomaly = 1.0 - same_resource_fraction
 
-        if resource_anomaly > 0.0:
-            factors.append(
-                f"Requester has {same_resource_count} prior request(s) mentioning "
-                f"'{resource}' out of {history_count} total; "
-                f"resource deviation contributes {resource_anomaly:.2f} to the anomaly score."
+        # Fraction of prior requests that share the same type
+        same_type_fraction = (
+            same_type_count / history_count if history_count > 0 else 0.0
+        )
+
+        # The anomaly score is the complement of the fraction
+        type_anomaly = 1.0 - same_type_fraction
+
+        # Additional deviation if resource is provided (optional)
+        resource_anomaly = 0.0
+        if resource:
+            resource_lower = resource.lower()
+            same_resource_count = sum(
+                1 for r in prior_accepted if resource_lower in r.request_text.lower()
             )
+            same_resource_fraction = (
+                same_resource_count / history_count if history_count > 0 else 0.0
+            )
+            resource_anomaly = 1.0 - same_resource_fraction
 
-    # Combine: use max of type and resource anomalies for a simple overall score.
-    # Precision capped to 4 decimal places.
-    anomaly_score = round(max(type_anomaly, resource_anomaly), 4)
+            if resource_anomaly > 0.0:
+                factors.append(
+                    f"Requester has {same_resource_count} prior request(s) mentioning "
+                    f"'{resource}' out of {history_count} total; "
+                    f"resource deviation contributes {resource_anomaly:.2f} to the anomaly score."
+                )
 
-    factors.append(
-        f"{same_type_count} of {history_count} prior accepted request(s) were of type "
-        f"'{request_type.value}' (fraction {same_type_fraction:.2f}); "
-        f"type anomaly contributes {type_anomaly:.2f}."
-    )
+        # Combine: use max of type and resource anomalies for a simple overall score.
+        anomaly_score = round(max(type_anomaly, resource_anomaly), 4)
+
+        factors.append(
+            f"{same_type_count} of {history_count} prior accepted request(s) were of type "
+            f"'{request_type.value}' (fraction {same_type_fraction:.2f}); "
+            f"type anomaly contributes {type_anomaly:.2f}."
+        )
 
     logger.info(
-        "Anomaly score for requester '%s': %.4f (history=%d, same_type=%d, resource='%s')",
+        "Anomaly score for requester '%s': %.4f (history=%d, resource='%s')",
         requester_id,
         anomaly_score,
         history_count,
-        same_type_count,
         resource or "None",
     )
+
+    # Persist factors to the AccessRequest record if a request_id is provided
+    if request_id is not None:
+        try:
+            db.query(AccessRequest).filter(AccessRequest.id == request_id).update(
+                {"anomaly_factors": json.dumps(factors)}
+            )
+            db.commit()
+            logger.info("Updated anomaly_factors for request %d", request_id)
+        except Exception as e:
+            db.rollback()
+            logger.warning(
+                "Failed to persist anomaly_factors for request %d: %s", request_id, e
+            )
 
     return anomaly_score, factors
