@@ -14,5 +14,8 @@ class Settings(BaseSettings):
     cold_start_min_history: int = 2
     cold_start_anomaly_score: float = 0.8
 
+    # Approver fallback
+    default_reviewer_queue: str = "default-reviewer-queue"
+
 
 settings = Settings()
