@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Request Detail | Access Request Classifier</title>
+    <style>
+        /* Minimal styling for clarity; expand as needed */
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f5f7fb; margin: 0; padding: 2rem; color: #1a1a2e; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .card { background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); padding: 1.5rem; margin-bottom: 1.5rem; }
+        .card-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e9ecef; padding-bottom: 0.75rem; margin-bottom: 1rem; }
+        .card-header h2 { margin: 0; font-size: 1.25rem; }
+        .status-badge { display: inline-block; padding: 0.25rem 0.75rem; border-radius: 12px; font-size: 0.8rem; font-weight: 600; text-transform: capitalize; }
+        .status-badge.pending { background: #fff3cd; color: #856404; }
+        .status-badge.approved { background: #d4edda; color: #155724; }
+        .status-badge.rejected { background: #f8d7da; color: #721c24; }
+        .status-badge.auto-approved { background: #cce5ff; color: #004085; }
+        .field-label { font-weight: 600; margin-bottom: 0.25rem; color: #495057; }
+        .field-value { margin-bottom: 1rem; }
+        .role-list { list-style: none; padding: 0; }
+        .role-item { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0; border-bottom: 1px solid #f0f0f0; }
+        .role-item:last-child { border-bottom: none; }
+        .role-item .role-name { font-weight: 500; }
+        .role-item .confidence-badge { font-size: 0.8rem; color: #6c757d; }
+        .anomaly-factors { list-style: none; padding: 0; margin: 0; }
+        .anomaly-factors li { padding: 0.25rem 0; color: #6c757d; font-size: 0.9rem; }
+        .anomaly-factors li::before { content: "• "; color: #adb5bd; }
+        .actions { display: flex; gap: 1rem; margin-top: 1.5rem; }
+        .btn { display: inline-block; padding: 0.5rem 1.5rem; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.9rem; transition: background 0.15s; }
+        .btn-approve { background: #28a745; color: white; }
+        .btn-approve:hover { background: #218838; }
+        .btn-reject { background: #dc3545; color: white; }
+        .btn-reject:hover { background: #c82333; }
+        .btn-override { background: #ffc107; color: #1a1a2e; }
+        .btn-override:hover { background: #e0a800; }
+        .back-link { display: inline-block; margin-bottom: 1rem; color: #007bff; text-decoration: none; }
+        .back-link:hover { text-decoration: underline; }
+        .confidence-note { color: #6c757d; font-size: 0.85rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/review" class="back-link">&larr; Back to Review Queue</a>
+
+        <div class="card">
+            <div class="card-header">
+                <h2>Request #{{ request.id }}</h2>
+                <span class="status-badge {{ request.status.value if request.status else '' }}">
+                    {{ request.status.value if request.status else 'Unknown' }}
+                </span>
+            </div>
+
+            <div class="field-label">Requester</div>
+            <div class="field-value">{{ request.requester_id }}</div>
+
+            <div class="field-label">Original Request</div>
+            <div class="field-value">{{ request.request_text }}</div>
+
+            <div class="field-label">Classified Type</div>
+            <div class="field-value">
+                {{ request.classification.value if request.classification else 'N/A' }}
+                {% if request.classification_confidence is not none %}
+                    <span class="confidence-note">(confidence: {{ "%.2f"|format(request.classification_confidence) }})</span>
+                {% endif %}
+            </div>
+
+            <div class="field-label">Suggested Roles</div>
+            {% if role_mappings and role_mappings|length > 0 %}
+            <ul class="role-list">
+                {% for mapping in role_mappings %}
+                <li class="role-item">
+                    <span>
+                        <span class="role-name">{{ mapping.role_name }}</span>
+                        <br><small>Resource: {{ mapping.resource }} — Owner: {{ mapping.owner }}</small>
+                    </span>
+                    <span class="confidence-badge">Confidence: {{ "%.2f"|format(mapping.confidence) }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <div class="field-value confidence-note">No role mappings found.</div>
+            {% endif %}
+
+            <div class="field-label">Anomaly Score &amp; Factors</div>
+            <div class="field-value">
+                <strong>{{ "%.2f"|format(request.anomaly_score) }}</strong>
+                {% if anomaly_factors and anomaly_factors|length > 0 %}
+                <ul class="anomaly-factors">
+                    {% for factor in anomaly_factors %}
+                    <li>{{ factor }}</li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+            </div>
+
+            <div class="field-label">Recommended Approver</div>
+            <div class="field-value">{{ request.recommended_approver if request.recommended_approver else 'None' }}</div>
+
+            <!-- Placeholder for reviewer actions; actual wiring will be done in sub-task 6.6 -->
+            {% if request.status == 'pending_review' %}
+            <div class="actions">
+                <form method="post" action="/review/{{ request.id }}/approve">
+                    <button type="submit" class="btn btn-approve">Approve</button>
+                </form>
+                <form method="post" action="/review/{{ request.id }}/reject">
+                    <button type="submit" class="btn btn-reject">Reject</button>
+                </form>
+                <form method="post" action="/review/{{ request.id }}/override">
+                    <button type="submit" class="btn btn-override">Override</button>
+                </form>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>
