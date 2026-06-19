@@ -11,6 +11,7 @@ from app.db.models import Base
 from app.db.seed import seed_database
 from app.db.session import engine, SessionLocal
 from app.routers import access_requests
+from app.ui import routes as ui_routes
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -49,6 +50,7 @@ app = FastAPI(
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 app.include_router(access_requests.router)
+app.include_router(ui_routes.router)
 
 
 @app.exception_handler(RequestValidationError)
