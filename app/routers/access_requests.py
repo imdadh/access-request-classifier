@@ -11,8 +11,17 @@ from app.db.session import get_db
 from app.llm.classifier import classify as classify_request
 from app.llm.default_provider import DefaultLLMProvider
 from app.llm.protocol import ClassificationError
-from app.repositories.audit import update_request_classification, record_decision
-from app.schemas import AccessRequestCreate, AccessRequestResponse
+from app.repositories.audit import (
+    update_request_classification,
+    record_decision,
+    get_request_lifecycle,
+)
+from app.schemas import (
+    AccessRequestCreate,
+    AccessRequestResponse,
+    AccessRequestAuditResponse,
+    DecisionResponse,
+)
 from app.services.role_mapping import map_roles
 from app.services.anomaly import compute_anomaly_score
 from app.services.approver import resolve_approver
@@ -28,11 +37,6 @@ def create_access_request(
     body: AccessRequestCreate,
     db: Session = Depends(get_db),
 ):
-    """
-    Accept a free-text access request, classify, map roles, score anomaly,
-    recommend approver, and route (auto-approve or manual review).
-    """
-    # 1. Run classification
     provider = DefaultLLMProvider.create_default()
     try:
         classification = classify_request(provider, body.request_text)
@@ -44,7 +48,6 @@ def create_access_request(
         )
         classification = None
 
-    # 2. Create the AccessRequest record in the database (initial state)
     new_request = AccessRequest(
         requester_id=body.requester_id,
         request_text=body.request_text,
@@ -54,13 +57,12 @@ def create_access_request(
         classification_confidence=(
             classification.confidence if classification else 0.0
         ),
-        status=RequestStatus.PENDING_REVIEW,  # will be overridden by routing
+        status=RequestStatus.PENDING_REVIEW,
     )
     db.add(new_request)
     db.commit()
     db.refresh(new_request)
 
-    # Record the initial state transition (creation -> pending_review)
     record_decision(
         db=db,
         access_request_id=new_request.id,
@@ -68,7 +70,6 @@ def create_access_request(
         action=RequestStatus.PENDING_REVIEW.value,
     )
 
-    # 3. If classification succeeded, run role mapping, anomaly scoring, approver, routing
     if classification:
         role_mappings = map_roles(
             db=db,
@@ -89,14 +90,12 @@ def create_access_request(
             role_mappings=role_mappings,
         )
     else:
-        # Classification failed – use empty role mappings, high anomaly, default approver
         role_mappings = []
         anomaly_score = 1.0
         anomaly_factors = ["Classification failed or was too ambiguous."]
         recommended_approver = settings.default_reviewer_queue
         decision = "pending_review"
 
-    # 4. Update the AccessRequest record with the final values, recording the transition
     updated_request = update_request_classification(
         db=db,
         request_id=new_request.id,
@@ -113,7 +112,6 @@ def create_access_request(
         anomaly_factors=anomaly_factors,
     )
 
-    # 5. Build response – decode anomaly_factors from JSON back to list
     response_anomaly_factors: Optional[list[str]] = None
     if updated_request.anomaly_factors:
         try:
@@ -142,12 +140,10 @@ def get_request_status(
     request_id: int,
     db: Session = Depends(get_db),
 ):
-    """Retrieve the current status and full details of an access request."""
     request = db.query(AccessRequest).filter(AccessRequest.id == request_id).first()
     if not request:
         raise HTTPException(status_code=404, detail="Request not found")
 
-    # Decode anomaly_factors
     response_anomaly_factors: Optional[list[str]] = None
     if request.anomaly_factors:
         try:
@@ -161,11 +157,67 @@ def get_request_status(
         request_text=request.request_text,
         classification=request.classification,
         classification_confidence=request.classification_confidence,
-        role_mappings=[],  # not persisted yet (see parent 5.0); empty on status lookup
+        role_mappings=[],
         anomaly_score=request.anomaly_score,
         anomaly_factors=response_anomaly_factors,
         recommended_approver=request.recommended_approver,
         status=request.status,
         created_at=request.created_at,
         updated_at=request.updated_at,
+    )
+
+
+@router.get("/{request_id}/audit", response_model=AccessRequestAuditResponse)
+def get_request_audit(
+    request_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    Retrieve the full audit lifecycle of an access request, including its current
+    state and all historical decisions (state transitions).
+    """
+    lifecycle = get_request_lifecycle(db, request_id)
+    if lifecycle is None:
+        raise HTTPException(status_code=404, detail="Request not found")
+
+    request = lifecycle["request"]
+    decisions = lifecycle["decisions"]
+
+    # Convert request to AccessRequestResponse schema
+    response_anomaly_factors: Optional[list[str]] = None
+    if request.anomaly_factors:
+        try:
+            response_anomaly_factors = json.loads(request.anomaly_factors)
+        except (json.JSONDecodeError, TypeError):
+            response_anomaly_factors = [str(request.anomaly_factors)]
+
+    request_response = AccessRequestResponse(
+        id=request.id,
+        requester_id=request.requester_id,
+        request_text=request.request_text,
+        classification=request.classification,
+        classification_confidence=request.classification_confidence,
+        role_mappings=[],  # not persisted; empty for audit view
+        anomaly_score=request.anomaly_score,
+        anomaly_factors=response_anomaly_factors,
+        recommended_approver=request.recommended_approver,
+        status=request.status,
+        created_at=request.created_at,
+        updated_at=request.updated_at,
+    )
+
+    decision_responses = [
+        DecisionResponse(
+            id=d.id,
+            access_request_id=d.access_request_id,
+            actor=d.actor,
+            action=d.action,
+            timestamp=d.timestamp,
+        )
+        for d in decisions
+    ]
+
+    return AccessRequestAuditResponse(
+        request=request_response,
+        decisions=decision_responses,
     )

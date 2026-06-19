@@ -7,8 +7,6 @@ from app.db.models import RequestType, RequestStatus
 
 
 class AccessRequestCreate(BaseModel):
-    """Schema for the incoming access request. Both fields are required and must be non-empty."""
-
     requester_id: str = Field(
         ..., min_length=1, description="The unique identifier of the requester."
     )
@@ -18,8 +16,6 @@ class AccessRequestCreate(BaseModel):
 
 
 class RoleMapping(BaseModel):
-    """A suggested role from the catalog that satisfies the request, with relevance confidence."""
-
     role_name: str = Field(
         ..., description="Name of the role in the synthetic catalog."
     )
@@ -33,8 +29,6 @@ class RoleMapping(BaseModel):
 
 
 class AccessRequestResponse(BaseModel):
-    """Complete structured response for a classified access request."""
-
     id: int = Field(..., description="Database ID of the access request.")
     requester_id: str = Field(..., description="ID of the requester.")
     request_text: str = Field(..., description="Original free-text request.")
@@ -63,3 +57,29 @@ class AccessRequestResponse(BaseModel):
         ..., description="Timestamp when the request was created."
     )
     updated_at: datetime = Field(..., description="Timestamp of the last update.")
+
+
+class DecisionResponse(BaseModel):
+    """A single state-transition record for the audit trail."""
+
+    id: int = Field(..., description="Database ID of the decision.")
+    access_request_id: int = Field(..., description="ID of the access request.")
+    actor: str = Field(
+        ..., description="Identifier of the actor (system or named reviewer)."
+    )
+    action: str = Field(
+        ..., description="The action taken (e.g., 'pending_review', 'auto_approved')."
+    )
+    timestamp: datetime = Field(..., description="Timestamp of the decision.")
+
+
+class AccessRequestAuditResponse(BaseModel):
+    """Full lifecycle details of an access request, including all decisions."""
+
+    request: AccessRequestResponse = Field(
+        ..., description="The current state of the request."
+    )
+    decisions: list[DecisionResponse] = Field(
+        ...,
+        description="Ordered list of all decisions (state transitions) for this request.",
+    )
