@@ -40,3 +40,6 @@ htmlcov/
 
 # Local-only planning artifacts (PRD, task list) — never publish
 tasks/
+
+# Keep the example env file tracked
+!.env.example
