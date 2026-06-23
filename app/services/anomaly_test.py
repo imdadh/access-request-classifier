@@ -107,16 +107,18 @@ class TestComputeAnomalyScore:
     def test_resource_anomaly_included(self, test_db_session: Session):
         """When resource is provided, it adds a factor and may increase score."""
         requester_id = "resource_user"
-        # Prior requests mentioning "dashboard"
-        req = AccessRequest(
-            requester_id=requester_id,
-            request_text="need dashboard access",
-            classification=RequestType.DATA_ACCESS,
-            classification_confidence=0.9,
-            anomaly_score=0.1,
-            status=RequestStatus.AUTO_APPROVED,
-        )
-        test_db_session.add(req)
+        # Two prior accepted requests mentioning "dashboard" (not "database"), so the
+        # requester is past cold-start and the resource "database" is fully novel.
+        for _ in range(2):
+            req = AccessRequest(
+                requester_id=requester_id,
+                request_text="need dashboard access",
+                classification=RequestType.DATA_ACCESS,
+                classification_confidence=0.9,
+                anomaly_score=0.1,
+                status=RequestStatus.AUTO_APPROVED,
+            )
+            test_db_session.add(req)
         test_db_session.commit()
 
         score, factors = compute_anomaly_score(

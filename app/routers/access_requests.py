@@ -57,12 +57,13 @@ def create_access_request(
         classification_confidence=(
             classification.confidence if classification else 0.0
         ),
-        status=RequestStatus.PENDING_REVIEW,
+        status=None,
     )
     db.add(new_request)
     db.commit()
     db.refresh(new_request)
 
+    # Genesis transition: None -> PENDING_REVIEW (applied + logged here).
     record_decision(
         db=db,
         access_request_id=new_request.id,

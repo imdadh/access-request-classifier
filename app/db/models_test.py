@@ -1,5 +1,5 @@
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.models import (
@@ -18,6 +18,12 @@ from app.db.models import (
 def db_session():
     """Create an in-memory SQLite database, create tables, yield a session, then drop everything."""
     engine = create_engine("sqlite:///:memory:", echo=False)
+
+    # SQLite does not enforce foreign keys unless explicitly enabled per connection.
+    @event.listens_for(engine, "connect")
+    def _enable_sqlite_fk(dbapi_connection, connection_record):
+        dbapi_connection.execute("PRAGMA foreign_keys=ON")
+
     Base.metadata.create_all(bind=engine)
     TestingSession = sessionmaker(bind=engine)
     session = TestingSession()

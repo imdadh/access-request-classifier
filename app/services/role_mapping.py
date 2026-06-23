@@ -65,7 +65,10 @@ _STOPWORDS: set[str] = {
 
 def _tokenize(text: str) -> list[str]:
     """Lowercase, split on non-alphanumeric, return list of meaningful tokens."""
-    tokens = re.findall(r"[a-zA-Z0-9]+(?:[.-][a-zA-Z0-9]+)*", text.lower())
+    # Split on every non-alphanumeric boundary (including '-' and '.') so that
+    # hyphenated catalog names like "production-database" tokenize into their
+    # component words and can match request terms such as "database".
+    tokens = re.findall(r"[a-zA-Z0-9]+", text.lower())
     return [t for t in tokens if t not in _STOPWORDS and len(t) > 1]
 
 

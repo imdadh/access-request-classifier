@@ -2,6 +2,7 @@ import logging
 import os
 
 from fastapi import FastAPI
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -60,7 +61,7 @@ async def validation_exception_handler(request, exc):
         status_code=422,
         content={
             "error": "Invalid request input",
-            "detail": exc.errors(),
+            "detail": jsonable_encoder(exc.errors()),
         },
     )
 

@@ -38,7 +38,7 @@ def _create_request(
     classification: RequestType = RequestType.DATA_ACCESS,
     classification_confidence: float = 0.9,
     anomaly_score: float = 0.2,
-    status: RequestStatus = RequestStatus.PENDING_REVIEW,
+    status: Optional[RequestStatus] = RequestStatus.PENDING_REVIEW,
     recommended_approver: Optional[str] = None,
 ) -> AccessRequest:
     """Insert a bare AccessRequest record (no Decision) for test setup."""
@@ -257,12 +257,8 @@ class TestUpdateRequestClassification:
             .filter(Decision.access_request_id == req.id)
             .all()
         )
-        assert (
-            len(decisions) == 2
-        )  # one from creation? Actually _create_request does not record decisions.
-        # So only one decision from the update. But record_decision is called inside update.
-        # The update calls record_decision, so we should have 1 decision.
-        # Actually _create_request does not use record_decision, so only the update creates a decision.
+        # update_request_classification records exactly one decision for the
+        # status change (PENDING_REVIEW -> APPROVED).
         assert len(decisions) == 1
         assert decisions[0].actor == "reviewer"
         assert decisions[0].action == "approved"
@@ -351,7 +347,8 @@ class TestGetRequestLifecycle:
 
     def test_returns_request_and_ordered_decisions(self, test_db_session: Session):
         """Returns request and decisions ordered by timestamp ascending."""
-        req = _create_request(test_db_session, status=RequestStatus.PENDING_REVIEW)
+        # Start with no status so the genesis None -> PENDING_REVIEW decision is valid.
+        req = _create_request(test_db_session, status=None)
         # Create two decisions with distinct timestamps
         record_decision(
             db=test_db_session,
@@ -382,7 +379,8 @@ class TestGetRequestLifecycle:
         self, test_db_session: Session
     ):
         """Multiple decisions for same request are all returned."""
-        req = _create_request(test_db_session, status=RequestStatus.PENDING_REVIEW)
+        # Start with no status so the genesis None -> PENDING_REVIEW decision is valid.
+        req = _create_request(test_db_session, status=None)
         # Record two decisions
         record_decision(
             db=test_db_session,

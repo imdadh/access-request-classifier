@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session
 from app.db.models import AccessRequest, RequestStatus, RequestType
 from app.db.session import get_db
 from app.repositories.audit import update_request_classification
+from app.routers.access_requests import create_access_request
+from app.schemas import AccessRequestCreate
 
 router = APIRouter(prefix="", tags=["ui"])
 
@@ -27,9 +29,23 @@ async def submit_form(request: Request, db: Session = Depends(get_db)):
         .all()
     )
     return templates.TemplateResponse(
+        request,
         "submit.html",
-        {"request": request, "recent_requests": recent_requests},
+        {"recent_requests": recent_requests},
     )
+
+
+@router.post("/submit", response_class=HTMLResponse, name="ui_submit_post")
+async def submit_request(
+    request: Request,
+    requester_id: str = Form(...),
+    request_text: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    """Handle the end-user submission form and create the access request."""
+    body = AccessRequestCreate(requester_id=requester_id, request_text=request_text)
+    create_access_request(body=body, db=db)
+    return RedirectResponse(url=router.url_path_for("ui_submit"), status_code=303)
 
 
 @router.get("/queue", response_class=HTMLResponse, name="ui_queue")
@@ -42,8 +58,9 @@ async def review_queue(request: Request, db: Session = Depends(get_db)):
         .all()
     )
     return templates.TemplateResponse(
+        request,
         "review_queue.html",
-        {"request": request, "pending_requests": pending_requests},
+        {"pending_requests": pending_requests},
     )
 
 
@@ -64,11 +81,12 @@ async def review_detail(
             anomaly_factors = [str(req.anomaly_factors)]
 
     return templates.TemplateResponse(
+        request,
         "review_detail.html",
         {
-            "request": request,
             "access_request": req,
             "anomaly_factors": anomaly_factors,
+            "request_types": list(RequestType),
         },
     )
 

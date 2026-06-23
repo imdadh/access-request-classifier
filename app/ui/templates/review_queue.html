@@ -116,7 +116,7 @@
                     <span class="status status-{{ req.status.value | replace('_', '-') }}">{{ req.status.value | replace('_', ' ') }}</span>
                 </td>
                 <td>
-                    <a href="/ui/requests/{{ req.id }}">Review</a>
+                    <a href="/detail/{{ req.id }}">Review</a>
                 </td>
             </tr>
             {% endfor %}
@@ -125,7 +125,7 @@
     {% else %}
     <div class="empty-state">
         <p>No pending requests for review.</p>
-        <a href="/ui/submit">Submit a new request</a>
+        <a href="/">Submit a new request</a>
     </div>
     {% endif %}
 </body>

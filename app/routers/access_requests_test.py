@@ -2,16 +2,27 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from app.db.models import Base, AccessRequest, Requester, RequestType, RequestStatus
 from app.db.session import get_db
 from app.main import app
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def test_db_session():
-    """Create an in-memory SQLite database, create tables, yield a session, then drop."""
-    engine = create_engine("sqlite:///:memory:", echo=False)
+    """Create an in-memory SQLite database, create tables, yield a session, then drop.
+
+    Uses StaticPool + check_same_thread=False so the single in-memory DB is shared
+    with the TestClient's worker thread (FastAPI runs sync endpoints in a threadpool).
+    Function-scoped for full per-test isolation.
+    """
+    engine = create_engine(
+        "sqlite:///:memory:",
+        echo=False,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
     Base.metadata.create_all(bind=engine)
     TestingSession = sessionmaker(bind=engine)
     session = TestingSession()

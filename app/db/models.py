@@ -73,15 +73,14 @@ class AccessRequest(Base):
         SAEnum(RequestType), nullable=False
     )
     classification_confidence: Mapped[float] = mapped_column(Float, nullable=False)
-    anomaly_score: Mapped[float] = mapped_column(Float, nullable=False)
+    anomaly_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     anomaly_factors: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     recommended_approver: Mapped[Optional[str]] = mapped_column(
         String(255), nullable=True
     )
-    status: Mapped[RequestStatus] = mapped_column(
+    status: Mapped[Optional[RequestStatus]] = mapped_column(
         SAEnum(RequestStatus),
-        default=RequestStatus.PENDING_REVIEW,
-        nullable=False,
+        nullable=True,
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
@@ -100,9 +99,7 @@ class Decision(Base):
         Integer, ForeignKey("access_requests.id"), nullable=False
     )
     actor: Mapped[str] = mapped_column(String(255), nullable=False)
-    action: Mapped[DecisionAction] = mapped_column(
-        SAEnum(DecisionAction), nullable=False
-    )
+    action: Mapped[str] = mapped_column(String(50), nullable=False)
     details: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 

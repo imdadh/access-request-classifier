@@ -7,8 +7,10 @@ from app.schemas import RoleMapping
 from app.services.role_mapping import map_roles
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def test_db_session():
+    # Function-scoped: the autouse seed_roles fixture inserts the same role names
+    # for every test, so a shared (module-scoped) DB would hit UNIQUE violations.
     engine = create_engine("sqlite:///:memory:", echo=False)
     Base.metadata.create_all(bind=engine)
     TestingSession = sessionmaker(bind=engine)
@@ -83,7 +85,7 @@ class TestMapRoles:
         """A request with no overlap should produce an empty list."""
         result = map_roles(
             db=test_db_session,
-            request_text="I need access to the staff cafeteria booking system",
+            request_text="I need access to the staff cafeteria booking tool",
             request_type=RequestType.SYSTEM_ACCESS,
         )
         assert result == []

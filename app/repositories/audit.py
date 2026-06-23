@@ -46,28 +46,29 @@ def update_request_classification(
     request = db.query(AccessRequest).filter(AccessRequest.id == request_id).first()
     if not request:
         raise ValueError(f"AccessRequest with id {request_id} not found")
-    _validate_transition(request.status, status)
-
     request.classification = classification
     request.classification_confidence = classification_confidence
     request.anomaly_score = anomaly_score
     request.recommended_approver = recommended_approver
-    request.status = status
     if anomaly_factors is not None:
         import json
 
         request.anomaly_factors = json.dumps(anomaly_factors)
 
     db.commit()
+
+    # Apply and record the status transition only when it actually changes.
+    # Remaining in the same state (e.g., staying in manual review) is not a
+    # transition and must not emit a decision.
+    if status != request.status:
+        record_decision(
+            db=db,
+            access_request_id=request_id,
+            actor=actor,
+            action=status.value,
+        )
+
     db.refresh(request)
-
-    record_decision(
-        db=db,
-        access_request_id=request_id,
-        actor=actor,
-        action=status.value,
-    )
-
     return request
 
 
@@ -92,6 +93,7 @@ def record_decision(
         raise ValueError(f"AccessRequest with id {access_request_id} not found")
 
     _validate_transition(request.status, new_status)
+    request.status = new_status
 
     if timestamp is None:
         timestamp = datetime.utcnow()
